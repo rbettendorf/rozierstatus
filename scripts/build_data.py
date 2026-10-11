@@ -131,7 +131,7 @@ def render_email(runway, template):
     by = {t: [c for c in shown if c["tier"] == t] for t in ("red", "amber", "green")}
     asof = dt.datetime.fromtimestamp(runway["asof_ms"] / 1000, ZoneInfo("America/Los_Angeles"))
     asof_txt = asof.strftime("%a, %b ") + str(asof.day) + asof.strftime(", ") + str(int(asof.strftime("%I"))) + asof.strftime(":%M %p")
-    out = template
+    out = re.sub(r"(__(?:RED|AMBER|GREEN)_COUNT__) channels", r"\1", template)  # label is added below
     out = out.replace("__ASOF__", asof_txt)
     for t in ("red", "amber", "green"):
         n = len(by[t])
@@ -227,7 +227,11 @@ def main():
     with open(os.path.join(a.out, "grid.json"), "w") as f:
         json.dump(grid, f, separators=(",", ":"))
 
-    tpl = os.path.join(os.path.dirname(__file__), "email_template.html")
+    here = os.path.dirname(os.path.abspath(__file__))
+    tpl = next((os.path.join(here, n) for n in ("email_template.html", "email-template.html")
+                if os.path.exists(os.path.join(here, n))), None)
+    if tpl is None:
+        sys.exit("email template not found in scripts/ (email_template.html or email-template.html)")
     with open(tpl, encoding="utf-8") as f:
         email_html = render_email(runway, f.read())
     with open(os.path.join(a.out, "email.html"), "w", encoding="utf-8") as f:

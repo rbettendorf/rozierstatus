@@ -1,0 +1,63 @@
+name: Refresh Roz-ier data and publish site
+
+on:
+  schedule:
+    - cron: "30 14 * * 1-5"
+    - cron: "30 15 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only run at 7 AM Pacific (or when started by hand)
+        id: guard
+        run: |
+          H=$(TZ=America/Los_Angeles date +%H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$H" = "07" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.go == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Pull schedules and build data files
+        if: steps.guard.outputs.go == 'true'
+        env:
+          PCC_API_KEY: ${{ secrets.PCC_API_KEY }}
+        run: python scripts/build_data.py --out site/data
+
+      - uses: actions/configure-pages@v5
+        if: steps.guard.outputs.go == 'true'
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.guard.outputs.go == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

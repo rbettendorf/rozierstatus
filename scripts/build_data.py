@@ -8,7 +8,8 @@ Outputs (under --out, default site/data):
 Needs env PCC_API_KEY. Exits non-zero if any monitored channel cannot be read, so a
 scheduled run fails loudly instead of publishing stale or partial data.
 """
-import argparse, json, os, re, sys, time, datetime as dt
+import argparse, html, json, os, re, sys, time, datetime as dt
+from zoneinfo import ZoneInfo
 import urllib.request, urllib.parse, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -108,6 +109,38 @@ def grid_rows(slug, frm, to):
     return out
 
 
+ROW = (
+    '<tr bgcolor="{bg}"><td style="padding:6px 8px 6px 16px;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{name}</td>'
+    '<td align="right" style="padding:6px 16px 6px 8px;color:#1750A8;font-weight:bold;white-space:nowrap;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{days}</td></tr>'
+)
+
+
+def tier_block(chs):
+    if not chs:
+        return '<div style="padding:8px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#5E5E5E;">None.</div>'
+    rows = []
+    for i, c in enumerate(chs):
+        days = "no schedule" if c["days_left"] is None else f'{c["days_left"]:.1f} days left'
+        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days))
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
+            + "".join(rows) + "</table>")
+
+
+def render_email(runway, template):
+    shown = [c for c in runway["channels"] if c["email"]]
+    by = {t: [c for c in shown if c["tier"] == t] for t in ("red", "amber", "green")}
+    asof = dt.datetime.fromtimestamp(runway["asof_ms"] / 1000, ZoneInfo("America/Los_Angeles"))
+    asof_txt = asof.strftime("%a, %b ") + str(asof.day) + asof.strftime(", ") + str(int(asof.strftime("%I"))) + asof.strftime(":%M %p")
+    out = template
+    out = out.replace("__ASOF__", asof_txt)
+    for t in ("red", "amber", "green"):
+        n = len(by[t])
+        out = out.replace(f"__{t.upper()}_COUNT__", f"{n} channel" + ("" if n == 1 else "s"))
+        out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t]))
+    out = out.replace("__INACTIVE__", str(len(runway["inactive"])))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="site/data")
@@ -193,6 +226,12 @@ def main():
         json.dump(runway, f, separators=(",", ":"))
     with open(os.path.join(a.out, "grid.json"), "w") as f:
         json.dump(grid, f, separators=(",", ":"))
+
+    tpl = os.path.join(os.path.dirname(__file__), "email_template.html")
+    with open(tpl, encoding="utf-8") as f:
+        email_html = render_email(runway, f.read())
+    with open(os.path.join(a.out, "email.html"), "w", encoding="utf-8") as f:
+        f.write(email_html)
 
     n = sum(len(x["airings"]) for x in grid_nets)
     tiers = {t: sum(1 for c in channels if c["tier"] == t) for t in ("red", "amber", "green")}

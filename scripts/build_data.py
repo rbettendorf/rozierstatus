@@ -109,6 +109,42 @@ def grid_rows(slug, frm, to):
     return out
 
 
+def find_gaps(airings, now_ms, horizon_ms, tol_ms):
+    """Empty stretches between now and the horizon. The tail after the last airing is runway, not a gap."""
+    rows = sorted((a for a in airings if a["s"] and a["e"]), key=lambda a: a["s"])
+    cursor, gaps = now_ms, []
+    for a in rows:
+        if a["e"] <= cursor:
+            continue
+        if a["s"] - cursor > tol_ms and cursor < horizon_ms:
+            gaps.append((cursor, min(a["s"], horizon_ms)))
+        cursor = max(cursor, a["e"])
+        if cursor >= horizon_ms:
+            break
+    return gaps
+
+
+PT = ZoneInfo("America/Los_Angeles")
+
+
+def day_label(ms):
+    d = dt.datetime.fromtimestamp(ms / 1000, PT)
+    return d.strftime("%a, %b ") + str(d.day)
+
+
+def time_label(ms):
+    d = dt.datetime.fromtimestamp(ms / 1000, PT)
+    return d.strftime("%a, %b ") + str(d.day) + ", " + str(int(d.strftime("%I"))) + d.strftime(":%M %p")
+
+
+def dur_label(ms):
+    m = ms / 60000
+    if m < 120:
+        return f"{int(round(m))} min"
+    h = m / 60
+    return f"{h:.0f} hrs" if h < 48 else f"{h / 24:.1f} days"
+
+
 ROW = (
     '<tr bgcolor="{bg}"><td style="padding:6px 8px 6px 16px;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{name}</td>'
     '<td align="right" style="padding:6px 16px 6px 8px;color:#1750A8;font-weight:bold;white-space:nowrap;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{days}</td></tr>'
@@ -126,6 +162,45 @@ def tier_block(chs):
             + "".join(rows) + "</table>")
 
 
+def headsup_block(shown, asof_ms):
+    horizon = asof_ms + C.HEADSUP_DAYS * 86400000
+    groups = {}
+    for c in shown:
+        r = c.get("red_on_ms")
+        if r and asof_ms < r <= horizon:
+            groups.setdefault(day_label(r), []).append(c)
+    if not groups:
+        return ""
+    lines = []
+    for lab, chs in sorted(groups.items(), key=lambda kv: min(c["red_on_ms"] for c in kv[1])):
+        n = len(chs)
+        lines.append(f'<div style="padding:2px 0;"><b>{n} channel{"" if n == 1 else "s"}</b> enter{"s" if n == 1 else ""} the red zone on <b>{lab}</b></div>')
+    return ('<tr><td style="padding:16px 32px 0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td bgcolor="#F4F5F8" style="background:#F4F5F8;border-left:4px solid #0D1551;padding:12px 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#0B1A3E;">'
+            '<div style="font-weight:bold;padding-bottom:4px;">Heads-up: next 10 days</div>' + "".join(lines) +
+            '<div style="font-size:12px;color:#5E5E5E;padding-top:4px;">Based on each channel\'s last scheduled airing. Scheduling more content moves these dates out.</div>'
+            '</td></tr></table></td></tr>')
+
+
+def gaps_section(shown):
+    gl = [c for c in shown if c.get("gap")]
+    n = len(gl)
+    head = ('<tr><td style="padding:24px 32px 0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td width="4" bgcolor="#1C7293" style="background:#1C7293;">&nbsp;</td>'
+            '<td style="padding:2px 0 2px 12px;font-size:17px;font-weight:bold;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;">Gaps '
+            f'<span style="font-weight:normal;color:#5E5E5E;font-size:14px;">empty stretches in the next {C.GAP_HORIZON_DAYS} days &middot; {n} channel{"" if n == 1 else "s"}</span></td></tr></table>')
+    if not gl:
+        return head + '<div style="padding:8px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#5E5E5E;">None.</div></td></tr>'
+    rows = []
+    for i, c in enumerate(sorted(gl, key=lambda c: c["gap"]["start_ms"])):
+        g = c["gap"]
+        extra = f' (+{g["count"] - 1} more)' if g["count"] > 1 else ""
+        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]),
+                               days=f'{time_label(g["start_ms"])} &middot; {dur_label(g["end_ms"] - g["start_ms"])}{extra}'))
+    return head + ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
+                   + "".join(rows) + "</table></td></tr>")
+
+
 def render_email(runway, template):
     shown = [c for c in runway["channels"] if c["email"]]
     by = {t: [c for c in shown if c["tier"] == t] for t in ("red", "amber", "green")}
@@ -138,6 +213,8 @@ def render_email(runway, template):
         out = out.replace(f"__{t.upper()}_COUNT__", f"{n} channel" + ("" if n == 1 else "s"))
         out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t]))
     out = out.replace("__INACTIVE__", str(len(runway["inactive"])))
+    out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]))
+    out = out.replace("__GAPS_SECTION__", gaps_section(shown))
     return out
 
 
@@ -220,6 +297,22 @@ def main():
         if s in res:
             grid_nets.append({"slug": s, "name": disp(s), "airings": res[s]})
     grid = {"asof_ms": now_ms, "from": g_from, "to": g_to, "networks": grid_nets}
+
+    # Per-channel enrichment: gaps and the date each channel would enter the red zone.
+    horizon = now_ms + C.GAP_HORIZON_DAYS * 86400000
+    tol = C.GAP_TOLERANCE_MIN * 60000
+    by_slug = {n["slug"]: n for n in grid_nets}
+    for c in channels:
+        c["red_on_ms"] = None
+        if c["end_ms"] is not None and c["days_left"] is not None and c["days_left"] >= C.RED_DAYS:
+            c["red_on_ms"] = c["end_ms"] - C.RED_DAYS * 86400000
+        c["gap"] = None
+        net = by_slug.get(c["slug"])
+        if net:
+            gaps = find_gaps(net["airings"], now_ms, min(horizon, c["end_ms"] or horizon), tol)
+            if gaps:
+                c["gap"] = {"start_ms": gaps[0][0], "end_ms": gaps[0][1], "count": len(gaps),
+                            "total_min": round(sum(b - a for a, b in gaps) / 60000)}
 
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "runway.json"), "w") as f:

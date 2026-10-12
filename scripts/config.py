@@ -72,3 +72,7 @@ EMAIL_EXCLUDE = ["fast_channel_the_ocho", "fast_channel_car_chases"]
 RED_DAYS = 14
 GREEN_DAYS = 30
 GRID_DAYS_AHEAD = 29  # grid covers today through today + this many days
+
+GAP_TOLERANCE_MIN = 10   # ignore gaps shorter than this (minutes) between airings
+GAP_HORIZON_DAYS = 30    # look this far ahead for empty stretches
+HEADSUP_DAYS = 10        # "enters red zone" warning looks this far ahead

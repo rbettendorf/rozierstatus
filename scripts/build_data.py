@@ -124,6 +124,40 @@ def find_gaps(airings, now_ms, horizon_ms, tol_ms):
     return gaps
 
 
+def load_history(src):
+    """Return {"YYYY-MM-DD": {slug: end_ms}}; empty if nothing is there yet. Never fails the run."""
+    try:
+        if src.startswith("http"):
+            req = urllib.request.Request(src, headers={"User-Agent": "roz-ier/1.0", "Cache-Control": "no-cache"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.load(r)
+        else:
+            with open(src, encoding="utf-8") as f:
+                data = json.load(f)
+        days = data.get("days", {})
+        return days if isinstance(days, dict) else {}
+    except Exception as e:
+        print(f"note: no previous history ({type(e).__name__}); trend starts with this run", file=sys.stderr)
+        return {}
+
+
+def apply_trend(channels, history, today):
+    """Annotate channels with the change in runway end since the most recent earlier day."""
+    earlier = sorted(d for d in history if d < today)
+    prev_day = earlier[-1] if earlier else None
+    for c in channels:
+        c["prev_date"] = c["delta_days"] = None
+        if prev_day is None or c["end_ms"] is None:
+            continue
+        pe = history[prev_day].get(c["slug"])
+        if pe is None:
+            continue
+        c["prev_date"] = prev_day
+        d = (c["end_ms"] - pe) / 86400000
+        c["delta_days"] = 0.0 if abs(d) < C.TREND_MIN_DAYS else round(d, 1)
+    return prev_day
+
+
 PT = ZoneInfo("America/Los_Angeles")
 ET = ZoneInfo("America/New_York")
 
@@ -163,6 +197,33 @@ ROW = (
 )
 
 
+def trend_html(c):
+    d = c.get("delta_days")
+    if not d:
+        return ""
+    up = d > 0
+    return ('<div style="font-size:12px;font-weight:normal;color:' + ("#3A9D48" if up else "#C8312B") + ';">'
+            + ("&#9650; +" if up else "&#9660; ") + f"{d:.1f} days vs {prev_label(c['prev_date'])}</div>")
+
+
+def prev_label(day):
+    d = dt.datetime.strptime(day, "%Y-%m-%d")
+    return d.strftime("%a, %b ") + str(d.day)
+
+
+def trend_summary(shown):
+    have = [c for c in shown if c.get("prev_date")]
+    if not have:
+        return ""
+    up = sum(1 for c in have if c["delta_days"] and c["delta_days"] > 0)
+    down = sum(1 for c in have if c["delta_days"] and c["delta_days"] < 0)
+    same = len(have) - up - down
+    lab = prev_label(have[0]["prev_date"])
+    return ('<tr><td style="padding:16px 32px 0 32px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#0B1A3E;">'
+            f'<b>Since {lab}:</b> <span style="color:#3A9D48;">{up} extended</span> &middot; '
+            f'<span style="color:#C8312B;">{down} shortened</span> &middot; {same} unchanged</td></tr>')
+
+
 def needs_sub(c, now_ms):
     if not c.get("needs"):
         return ""
@@ -176,7 +237,7 @@ def tier_block(chs, now_ms):
     rows = []
     for i, c in enumerate(chs):
         days = "no schedule" if c["days_left"] is None else f'{c["days_left"]:.1f} days left'
-        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days, sub=needs_sub(c, now_ms)))
+        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days + trend_html(c), sub=needs_sub(c, now_ms)))
     return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
             + "".join(rows) + "</table>")
 
@@ -232,7 +293,7 @@ def render_email(runway, template):
         out = out.replace(f"__{t.upper()}_COUNT__", f"{n} channel" + ("" if n == 1 else "s"))
         out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t], runway["asof_ms"]))
     out = out.replace("__INACTIVE__", str(len(runway["inactive"])))
-    out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]))
+    out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]) + trend_summary(shown))
     out = out.replace("__GAPS_SECTION__", gaps_section(shown))
     return out
 
@@ -242,6 +303,7 @@ def main():
     ap.add_argument("--out", default="site/data")
     ap.add_argument("--only", help="comma separated slugs, for testing")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--history", default=C.BASE_URL + "/data/history.json", help="URL or file of previous history.json")
     a = ap.parse_args()
     if not KEY:
         sys.exit("PCC_API_KEY is not set")
@@ -317,6 +379,15 @@ def main():
             grid_nets.append({"slug": s, "name": disp(s), "airings": res[s]})
     grid = {"asof_ms": now_ms, "from": g_from, "to": g_to, "networks": grid_nets}
 
+    # Trend vs the most recent earlier day; keep a rolling history for next time.
+    today = dt.datetime.fromtimestamp(now_ms / 1000, PT).strftime("%Y-%m-%d")
+    history = load_history(a.history)
+    prev_day = apply_trend(channels, history, today)
+    history[today] = {c["slug"]: c["end_ms"] for c in channels if c["end_ms"] is not None}
+    keep = sorted(history)[-C.HISTORY_KEEP_DAYS:]
+    history = {d: history[d] for d in keep}
+    runway["compared_to"] = prev_day
+
     # Per-channel enrichment: gaps and the date each channel would enter the red zone.
     horizon = now_ms + C.GAP_HORIZON_DAYS * 86400000
     tol = C.GAP_TOLERANCE_MIN * 60000
@@ -338,6 +409,8 @@ def main():
                             "total_min": round(sum(b - a for a, b in gaps) / 60000)}
 
     os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "history.json"), "w") as f:
+        json.dump({"days": history}, f, separators=(",", ":"))
     with open(os.path.join(a.out, "runway.json"), "w") as f:
         json.dump(runway, f, separators=(",", ":"))
     with open(os.path.join(a.out, "grid.json"), "w") as f:

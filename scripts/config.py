@@ -76,3 +76,8 @@ GRID_DAYS_AHEAD = 29  # grid covers today through today + this many days
 GAP_TOLERANCE_MIN = 10   # ignore gaps shorter than this (minutes) between airings
 GAP_HORIZON_DAYS = 30    # look this far ahead for empty stretches
 HEADSUP_DAYS = 10        # "enters red zone" warning looks this far ahead
+
+# Where the previously published site lives (used to carry the history file forward between runs).
+BASE_URL = "https://rbettendorf.github.io/rozierstatus"
+HISTORY_KEEP_DAYS = 30
+TREND_MIN_DAYS = 0.04    # ignore runway changes smaller than ~1 hour

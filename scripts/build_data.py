@@ -125,6 +125,18 @@ def find_gaps(airings, now_ms, horizon_ms, tol_ms):
 
 
 PT = ZoneInfo("America/Los_Angeles")
+ET = ZoneInfo("America/New_York")
+
+
+def next_block(end_ms):
+    """Schedules are loaded as month blocks ending at midnight Eastern. Work out which block is missing."""
+    e = dt.datetime.fromtimestamp((end_ms - 6 * 3600 * 1000) / 1000, ET)  # last programs can spill past midnight
+    through = e.strftime("%b ") + str(e.day)
+    if (e + dt.timedelta(days=1)).month != e.month:  # covered through month end
+        nxt = (e.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
+        return through, nxt.strftime("%B")
+    return through, "rest of " + e.strftime("%B")
+
 
 
 def day_label(ms):
@@ -146,18 +158,26 @@ def dur_label(ms):
 
 
 ROW = (
-    '<tr bgcolor="{bg}"><td style="padding:6px 8px 6px 16px;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{name}</td>'
+    '<tr bgcolor="{bg}"><td style="padding:6px 8px 6px 16px;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{name}{sub}</td>'
     '<td align="right" style="padding:6px 16px 6px 8px;color:#1750A8;font-weight:bold;white-space:nowrap;font-family:Helvetica,Arial,sans-serif;font-size:14px;">{days}</td></tr>'
 )
 
 
-def tier_block(chs):
+def needs_sub(c, now_ms):
+    if not c.get("needs") or not c.get("due_ms"):
+        return ""
+    due = ("was due " if c["due_ms"] < now_ms else "due ") + day_label(c["due_ms"])
+    return ('<div style="font-size:12px;color:#5E5E5E;padding-top:1px;">Through ' + c["through"] + " &middot; needs "
+            + html.escape(c["needs"]) + " &middot; " + due + "</div>")
+
+
+def tier_block(chs, now_ms):
     if not chs:
         return '<div style="padding:8px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#5E5E5E;">None.</div>'
     rows = []
     for i, c in enumerate(chs):
         days = "no schedule" if c["days_left"] is None else f'{c["days_left"]:.1f} days left'
-        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days))
+        rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days, sub=needs_sub(c, now_ms)))
     return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
             + "".join(rows) + "</table>")
 
@@ -196,7 +216,7 @@ def gaps_section(shown):
         g = c["gap"]
         extra = f' (+{g["count"] - 1} more)' if g["count"] > 1 else ""
         rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]),
-                               days=f'{time_label(g["start_ms"])} &middot; {dur_label(g["end_ms"] - g["start_ms"])}{extra}'))
+                               days=f'{time_label(g["start_ms"])} &middot; {dur_label(g["end_ms"] - g["start_ms"])}{extra}', sub=""))
     return head + ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
                    + "".join(rows) + "</table></td></tr>")
 
@@ -211,7 +231,7 @@ def render_email(runway, template):
     for t in ("red", "amber", "green"):
         n = len(by[t])
         out = out.replace(f"__{t.upper()}_COUNT__", f"{n} channel" + ("" if n == 1 else "s"))
-        out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t]))
+        out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t], runway["asof_ms"]))
     out = out.replace("__INACTIVE__", str(len(runway["inactive"])))
     out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]))
     out = out.replace("__GAPS_SECTION__", gaps_section(shown))
@@ -306,6 +326,10 @@ def main():
         c["red_on_ms"] = None
         if c["end_ms"] is not None and c["days_left"] is not None and c["days_left"] >= C.RED_DAYS:
             c["red_on_ms"] = c["end_ms"] - C.RED_DAYS * 86400000
+        c["through"] = c["needs"] = c["due_ms"] = None
+        if c["end_ms"] is not None:
+            c["through"], c["needs"] = next_block(c["end_ms"])
+            c["due_ms"] = c["end_ms"] - C.GREEN_DAYS * 86400000
         c["gap"] = None
         net = by_slug.get(c["slug"])
         if net:

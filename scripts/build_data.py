@@ -164,11 +164,10 @@ ROW = (
 
 
 def needs_sub(c, now_ms):
-    if not c.get("needs") or not c.get("due_ms"):
+    if not c.get("needs"):
         return ""
-    due = ("was due " if c["due_ms"] < now_ms else "due ") + day_label(c["due_ms"])
     return ('<div style="font-size:12px;color:#5E5E5E;padding-top:1px;">Through ' + c["through"] + " &middot; needs "
-            + html.escape(c["needs"]) + " &middot; " + due + "</div>")
+            + html.escape(c["needs"]) + "</div>")
 
 
 def tier_block(chs, now_ms):

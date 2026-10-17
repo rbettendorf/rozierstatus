@@ -6,7 +6,7 @@
 
 ## Setup
 1. Create a repo, add these files.
-2. Settings > Secrets and variables > Actions: add secret `PCC_API_KEY`.
+2. Settings > Secrets and variables > Actions: add `PCC_API_KEY`.
 3. Settings > Pages: Source = GitHub Actions. Set visibility to your organization if available.
 4. Actions tab > "Refresh Roz-ier data and publish site" > Run workflow to test.
 

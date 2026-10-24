@@ -144,7 +144,9 @@ def load_history(src):
 def apply_trend(channels, history, today):
     """Annotate channels with the change in runway end since the most recent earlier day."""
     earlier = sorted(d for d in history if d < today)
-    prev_day = earlier[-1] if earlier else None
+    # Baseline is the previous weekday's snapshot (Monday compares to Friday); weekend manual runs are skipped.
+    weekdays = [d for d in earlier if dt.datetime.strptime(d, "%Y-%m-%d").weekday() < 5]
+    prev_day = (weekdays or earlier or [None])[-1]
     for c in channels:
         c["prev_date"] = c["delta_days"] = None
         if prev_day is None or c["end_ms"] is None:

@@ -2,8 +2,8 @@ name: Refresh Roz-ier data and publish site
 
 on:
   schedule:
-    - cron: "30 14 * * 1-5"
-    - cron: "30 15 * * 1-5"
+    - cron: "0,30 15 * * 1-5"
+    - cron: "0 16 * * 1-5"
   workflow_dispatch:
 
 permissions:

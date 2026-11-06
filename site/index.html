@@ -14,7 +14,7 @@ var PPM=3.4,LW=320,RH=48,curW=0;
 try{var sv=+localStorage.getItem('roz-lw');if(sv>=160&&sv<=700)LW=sv}catch(e){}
 document.documentElement.style.setProperty('--lw',LW+'px');
 var TZS=[['US Eastern','America/New_York'],['UTC','UTC'],['US Central','America/Chicago'],['US Pacific','America/Los_Angeles']];
-var tz=(function(){var z='';try{z=Intl.DateTimeFormat().resolvedOptions().timeZone}catch(e){}var m={'America/Los_Angeles':'America/Los_Angeles','America/Chicago':'America/Chicago','America/New_York':'America/New_York','UTC':'UTC','Etc/UTC':'UTC'};return m[z]||TZS[0][1]})(),dayIdx=0,days=[],q='';
+var tz='America/New_York',dayIdx=0,days=[],q='';
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function parts(ms,z){var o={};new Intl.DateTimeFormat('en-US',{timeZone:z,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).formatToParts(new Date(ms)).forEach(function(p){o[p.type]=p.value});return o}
 function off(ms,z){var p=parts(ms,z);return Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute)-Math.floor(ms/60000)*60000}

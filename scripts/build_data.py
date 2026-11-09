@@ -269,8 +269,9 @@ def gaps_section(shown):
     n = len(gl)
     head = ('<tr><td style="padding:24px 32px 0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
             '<td width="4" bgcolor="#1C7293" style="background:#1C7293;">&nbsp;</td>'
-            '<td style="padding:2px 0 2px 12px;font-size:17px;font-weight:bold;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;">Gaps '
-            f'<span style="font-weight:normal;color:#5E5E5E;font-size:14px;">empty stretches in the next {C.GAP_HORIZON_DAYS} days &middot; {n} channel{"" if n == 1 else "s"}</span></td></tr></table>')
+            '<td style="padding:2px 0 2px 12px;font-size:17px;font-weight:bold;color:#0B1A3E;font-family:Helvetica,Arial,sans-serif;">Gaps in PCC feed '
+            f'<span style="font-weight:normal;color:#5E5E5E;font-size:14px;">empty stretches in the next {C.GAP_HORIZON_DAYS} days &middot; {n} channel{"" if n == 1 else "s"}</span></td></tr></table>'
+            + ('<div style="padding:4px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#5E5E5E;">PCC has no airing in these slots. Content Scheduler may show them filled, so check the source before rescheduling.</div>' if n else ''))
     if not gl:
         return head + '<div style="padding:8px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#5E5E5E;">None.</div></td></tr>'
     rows = []

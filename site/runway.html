@@ -65,7 +65,7 @@ function trendTxt(c){if(c.dd==null||!c.pd)return'';if(c.dd>0)return'<i class="tr
 fetch('data/runway.json',{cache:'no-cache'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(R){
 var now=Date.now();
 var ch=R.channels.map(function(c){var d=c.end_ms==null?null:(c.end_ms-now)/864e5;return{n:c.name,end:c.end_ms,d:d,t:tier(d,R),gap:c.gap||null,ro:c.red_on_ms||null,dd:(c.delta_days===undefined?null:c.delta_days),pd:c.prev_date||null,th:c.through||null,nd:c.needs||null,due:c.due_ms||null}});
-ch.sort(function(a,b){return(a.d===null?-1:a.d)-(b.d===null?-1:b.d)});
+ch.sort(function(a,b){return a.n<b.n?-1:a.n>b.n?1:0});
 document.getElementById('asof').textContent='Data refreshed '+f(R.asof_ms,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' PT';
 var cnt={red:0,amber:0,green:0};ch.forEach(function(c){cnt[c.t]++});
 var lab={red:['Red','under '+R.red_days+' days'],amber:['Amber',R.red_days+' to '+(R.green_days-1)+' days'],green:['Green',R.green_days+'+ days']};

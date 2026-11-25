@@ -237,7 +237,7 @@ def tier_block(chs, now_ms):
     if not chs:
         return '<div style="padding:8px 0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#5E5E5E;">None.</div>'
     rows = []
-    for i, c in enumerate(chs):
+    for i, c in enumerate(sorted(chs, key=lambda c: c["name"])):
         days = "no schedule" if c["days_left"] is None else f'{c["days_left"]:.1f} days left'
         rows.append(ROW.format(bg="#FFFFFF" if i % 2 == 0 else "#F4F5F8", name=html.escape(c["name"]), days=days + trend_html(c), sub=needs_sub(c, now_ms)))
     return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">'
@@ -296,8 +296,8 @@ def render_email(runway, template):
         out = out.replace(f"__{t.upper()}_COUNT__", f"{n} channel" + ("" if n == 1 else "s"))
         out = out.replace(f"__{t.upper()}_BLOCK__", tier_block(by[t], runway["asof_ms"]))
     out = out.replace("__INACTIVE__", str(len(runway["inactive"])))
-    out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]) + trend_summary(shown))
-    out = out.replace("__GAPS_SECTION__", gaps_section(shown))
+    out = out.replace("__HEADSUP_BLOCK__", headsup_block(shown, runway["asof_ms"]) + gaps_section(shown) + trend_summary(shown))
+    out = out.replace("__GAPS_SECTION__", "")
     return out
 
 

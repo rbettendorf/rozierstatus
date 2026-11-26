@@ -1,0 +1,1 @@
+window.ROZ_REFRESH_URL = "https://d88e729e25d3e1c4998d15eaaf762d.05.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/01/workflows/719bd9ac22d946e6a12d660b31a334fe/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=muSPcooEV7D-VCoL32hNwPUsSKl-Pmjx7bR9OPdNjuQ";

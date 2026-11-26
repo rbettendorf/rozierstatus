@@ -9,7 +9,7 @@ header{background:var(--navy);color:#fff;padding:20px 32px}
 .top img{height:52px;width:auto}
 h1{margin:0;font-size:26px;font-weight:700;color:#fff}
 .sub{margin-top:6px;font-size:13px;color:#fff;opacity:.9}
-.nav{margin-left:auto;color:#fff;text-decoration:none;border-bottom:1px solid #fff;font-size:13px}
+.acts{margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.acts .nav{margin-left:0}#rfs{font-size:12px;color:#fff;max-width:340px;text-align:right}#rf{font:inherit;font-size:13px;font-weight:700;color:#fff;background:#1C7293;border:1px solid #49C0EF;border-radius:6px;padding:7px 14px;cursor:pointer}#rf:hover{background:#1750A8}#rf:disabled{opacity:.55;cursor:default}.nav{color:#fff;text-decoration:none;border-bottom:1px solid #fff;font-size:13px}
 main{max-width:1080px;margin:0 auto;padding:28px 32px 48px}
 .kpis{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
 .kpi{flex:1;min-width:160px;background:var(--light);border-radius:8px;padding:16px 20px;border-left:6px solid var(--rule)}
@@ -34,7 +34,7 @@ footer{background:linear-gradient(90deg,#0D1551 0%,#1C7293 100%);color:#fff;padd
 footer img{height:26px;width:auto}
 @media(max-width:760px){.row,.axis{grid-template-columns:1fr}.dl{text-align:left}.axis{display:none}main,header,footer{padding-left:16px;padding-right:16px}}
 </style></head><body>
-<header><div class="top"><img src="roz-logo.png" alt="Roz"><div><h1>Roz-ier: FAST Channels Runway</h1><div class="sub" id="asof">Loading...</div></div><a class="nav" href="index.html">Schedule grid</a></div></header>
+<header><div class="top"><img src="roz-logo.png" alt="Roz"><div><h1>Roz-ier: FAST Channels Runway</h1><div class="sub" id="asof">Loading...</div></div><div class="acts"><span id="rfs" aria-live="polite"></span><button id="rf" type="button" style="display:none">Refresh data</button><a class="nav" href="index.html">Schedule grid</a></div></div></header>
 <div id="stale"></div>
 <main>
 <div class="kpis" id="kpis"></div>
@@ -89,4 +89,24 @@ document.getElementById('zones').innerHTML=z;
 document.getElementById('inact').textContent=R.inactive.length+' inactive channels with no schedule are not monitored.';
 }).catch(function(e){document.getElementById('asof').textContent='Could not load runway data ('+e.message+').'});
 })();
-</script></body></html>
+</script><script src="refresh-config.js"></script>
+<script>(function(){
+var u=window.ROZ_REFRESH_URL,b=document.getElementById('rf'),s=document.getElementById('rfs');
+if(!b||!u)return;b.style.display='';
+var KEY='roz-rf',COOL=3*60000,timer=null;
+function say(t){s.textContent=t}
+function asof(){return fetch('data/runway.json?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){return j.asof_ms})}
+function last(){try{return +localStorage.getItem(KEY)||0}catch(e){return 0}}
+function mark(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}}
+function poll(base,t0){clearInterval(timer);timer=setInterval(function(){
+ asof().then(function(a){if(a!==base){clearInterval(timer);say('Updated. Reloading...');setTimeout(function(){location.reload()},600)}
+  else if(Date.now()-t0>8*60000){clearInterval(timer);b.disabled=false;say('No new data yet. The refresh may have been skipped (data under 10 minutes old) or failed. Try again later.')}}).catch(function(){})},15000)}
+b.onclick=function(){
+ if(Date.now()-last()<COOL){say('A refresh was requested moments ago. Give it a couple of minutes.');return}
+ b.disabled=true;say('Requesting refresh...');
+ asof().then(function(base){
+  return fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:'refresh'}).then(function(){
+   mark();say('Refresh requested. New data usually appears in about 2 minutes.');poll(base,Date.now())})
+ }).catch(function(){b.disabled=false;say('Could not send the request. Check your connection and try again.')})};
+})()</script>
+</body></html>
